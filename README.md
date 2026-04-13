@@ -5,6 +5,9 @@ This repository contains the Proof of Concept (POC) for simulating and visualizi
 
 Our goal is to dynamically generate phase-shift steering arrays, simulate severe physical channel impairments (Doppler shift and Free Space Path Loss), and provide high-fidelity 3D visual representations.
 
+<img width="1470" height="798" alt="Screenshot 2026-04-13 at 7 47 08 PM" src="https://github.com/user-attachments/assets/3e067bee-791a-4b7a-8d48-589f3fe3b4ea" />
+
+
 ## 🚀 Key Features
 
 This project is separated into three core mathematical simulation engines:
@@ -32,7 +35,8 @@ The system is built on a modular three-tier architecture that cleanly separates 
 3. **Core Physics Engines**: A suite of decoupled Python modules handling highly-specific math operations (Antenna Phasing, Orbital Telemetry, and Signal Path Impairment).
 
 ### *Architecture Diagrams & UI Screenshots*
-![High-Level Design Architecture](hld_diagram.png)
+
+![hld_diagram](https://github.com/user-attachments/assets/8c7cee43-2f4f-4f9f-a2aa-32ebf36444fa)
 
 ---
 
@@ -60,7 +64,8 @@ The backend physics engines are designed around strict, typed Object-Oriented bo
   - `free_space_path_loss`: Computes the classic Friis transmission equation.
 
 ### *Technical Flowcharts & Console Output*
-![Low-Level Design Class Diagram](lld_diagram.png)
+![lld_diagram](https://github.com/user-attachments/assets/c7e0a3ad-be5b-4853-9c8d-7f873bfdff37)
+
 
 ---
 
