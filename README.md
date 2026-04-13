@@ -7,6 +7,7 @@ Our goal is to dynamically generate phase-shift steering arrays, simulate severe
 
 <img width="1470" height="798" alt="Screenshot 2026-04-13 at 7 47 08 PM" src="https://github.com/user-attachments/assets/3e067bee-791a-4b7a-8d48-589f3fe3b4ea" />
 
+<img width="1470" height="797" alt="Screenshot 2026-04-13 at 8 00 59 PM" src="https://github.com/user-attachments/assets/4a890016-e84a-4eef-8571-7f37c58e37a1" />
 
 ## 🚀 Key Features
 
