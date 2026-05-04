@@ -32,7 +32,7 @@ def generate_hex_grid(radius, rows, cols):
     
     return centers
 
-def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0):
+def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0, hopping_config=None):
     """Builds and returns a 3D Plotly figure representing the dynamic satellite coverage."""
     fig = go.Figure()
     
@@ -56,39 +56,50 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
     z = np.zeros(len(centers))
     
     # Dynamic Beam Steering Calculations
-    # Elevation slider in original app is 0 to 90. 
-    # Let's treat steer_el as the angle of deflection off nadir. 
-    # If 0, beam points straight down. If 45, it points outward to the side.
-    theta_rad = np.deg2rad(steer_el)
-    phi_rad = np.deg2rad(steer_az)
+    active_beams = []
+    colors = ['rgba(255, 69, 0, 0.8)', 'rgba(50, 205, 50, 0.8)', 'rgba(255, 215, 0, 0.8)', 'rgba(255, 20, 147, 0.8)', 'rgba(0, 255, 255, 0.8)', 'rgba(255, 140, 0, 0.8)', 'rgba(138, 43, 226, 0.8)', 'rgba(255, 0, 255, 0.8)']
     
-    r_ground = sat1[2] * np.tan(theta_rad)
-    target_x = sat1[0] + r_ground * np.cos(phi_rad)
-    target_y = sat1[1] + r_ground * np.sin(phi_rad)
-    
-    # Find the nearest hexagon center to the mathematical target
-    distances = np.sqrt((centers[:, 0] - target_x)**2 + (centers[:, 1] - target_y)**2)
-    active_hex_idx = np.argmin(distances)
-    
-    # Calculate Live Channel Metrics for the active beam
-    target_real_x = centers[active_hex_idx][0] * SCALE
-    target_real_y = centers[active_hex_idx][1] * SCALE
-    
-    # Distance from satellite to cell on ground in real meters
-    dist_real_m = np.sqrt((x_real - target_real_x)**2 + (0 - target_real_y)**2 + (z_real - 0)**2)
-    
-    # Radial Velocity towards the stationary cell (positive if approaching, negative if departing)
-    vector_x = target_real_x - x_real
-    vector_y = target_real_y - 0
-    vector_z = 0 - z_real
-    
-    # Dot product of velocity vector [v, 0, 0] with unit position vector
-    v_radial = leo.velocity * (vector_x / dist_real_m)
-    
-    fspl = channel.free_space_path_loss(dist_real_m)
-    doppler_shift = channel.calculate_doppler_shift(v_radial)
+    if hopping_config is None:
+        # Manual Steering Mode
+        theta_rad = np.deg2rad(steer_el)
+        phi_rad = np.deg2rad(steer_az)
+        
+        r_ground = sat1[2] * np.tan(theta_rad)
+        target_x = sat1[0] + r_ground * np.cos(phi_rad)
+        target_y = sat1[1] + r_ground * np.sin(phi_rad)
+        
+        distances = np.sqrt((centers[:, 0] - target_x)**2 + (centers[:, 1] - target_y)**2)
+        active_hex_idx = np.argmin(distances)
+        active_beams.append({'idx': active_hex_idx, 'color': colors[0], 'beam_num': 1})
+    else:
+        # Beam Hopping Mode
+        granularity = hopping_config.get('time_granularity', 1.0)
+        p_len = hopping_config.get('pattern_length', 8)
+        num_beams = hopping_config.get('num_beams', 2)
+        patterns = hopping_config.get('patterns', [])
+        
+        hop_index = int(abs(time_t) // granularity) % p_len
+        for b in range(num_beams):
+            if b < len(patterns):
+                pat = patterns[b]
+                cell_idx = pat[hop_index % len(pat)] if len(pat) > 0 else 0
+                cell_idx = cell_idx % len(centers) # Safety bound
+                active_beams.append({'idx': cell_idx, 'color': colors[b % len(colors)], 'beam_num': b + 1})
+
+    # Utility function to compute channel metrics for hovering
+    def get_cell_metrics(idx):
+        target_real_x = centers[idx][0] * SCALE
+        target_real_y = centers[idx][1] * SCALE
+        dist_real_m = np.sqrt((x_real - target_real_x)**2 + (0 - target_real_y)**2 + (z_real - 0)**2)
+        vector_x = target_real_x - x_real
+        v_radial = leo.velocity * (vector_x / dist_real_m)
+        fspl = channel.free_space_path_loss(dist_real_m)
+        doppler_shift = channel.calculate_doppler_shift(v_radial)
+        return dist_real_m, fspl, doppler_shift
     
     # Draw Hexagons
+    active_indices = {b['idx']: b for b in active_beams}
+    
     for i, (cx, cy) in enumerate(centers):
         x, y = get_hexagon_vertices(cx, cy, radius)
         
@@ -104,11 +115,20 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
             fill_color = "rgba(30, 144, 255, 0.6)" # Blueish
             
         # Highlight dynamic target for Sat 1
-        if i == active_hex_idx:
-            fill_color = "rgba(255, 69, 0, 0.8)" # Orange Red for Active Cell
-            line_color = "red"
+        if i in active_indices:
+            beam = active_indices[i]
+            fill_color = beam['color']
+            line_color = "red" if hopping_config is None else "white"
             width = 3
+            dist_real_m, fspl, doppler_shift = get_cell_metrics(i)
+            hop_text = ""
+            if hopping_config is not None:
+                p_len = hopping_config.get('pattern_length', 8)
+                granularity = hopping_config.get('time_granularity', 1.0)
+                hop_idx_str = int(abs(time_t) // granularity) % p_len
+                hop_text = f"Hop Step: {hop_idx_str}<br>Beam: #{beam['beam_num']}<br>"
             hover_text = (f"<b>Live Illuminated Cell #{i}</b><br>"
+                          f"{hop_text}"
                           f"Distance: {dist_real_m/1000:.1f} km<br>"
                           f"Free Space Path Loss: {fspl:.2f} dB<br>"
                           f"Doppler Shift: {doppler_shift/1e3:.2f} kHz")
@@ -176,10 +196,14 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
     ))
     
     # Active Dynamic Beam Sat 1
-    fig.add_trace(go.Scatter3d(
-        x=[sat1[0], centers[active_hex_idx][0]], y=[sat1[1], centers[active_hex_idx][1]], z=[sat1[2], 0],
-        mode='lines', line=dict(color='rgba(255, 69, 0, 0.8)', width=8), name="Active Spot Beam"
-    ))
+    for beam in active_beams:
+        fig.add_trace(go.Scatter3d(
+            x=[sat1[0], centers[beam['idx']][0]], y=[sat1[1], centers[beam['idx']][1]], z=[sat1[2], 0],
+            mode='lines', line=dict(color=beam['color'], width=6), showlegend=False, name=f"Beam {beam['beam_num']}"
+        ))
+    if hopping_config is None and len(fig.data) > 0:
+        fig.data[-1].name = "Active Spot Beam"
+        fig.data[-1].showlegend = True
 
     # Static Beams Sat 2
     target_sat2_purple = centers[44]
