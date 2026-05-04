@@ -18,9 +18,49 @@ num_x = st.sidebar.number_input("Elements (X-Axis)", min_value=2, max_value=32, 
 num_y = st.sidebar.number_input("Elements (Y-Axis)", min_value=2, max_value=32, value=8)
 freq_ghz = st.sidebar.number_input("Frequency (GHz)", min_value=1.0, max_value=100.0, value=28.0)
 
-st.sidebar.header("2. Steering Controls")
-azimuth = st.sidebar.slider("Azimuth Angle (deg)", -90.0, 90.0, 0.0, 1.0)
-elevation = st.sidebar.slider("Elevation (Deflection from Nadir)", 0.0, 90.0, 0.0, 1.0)
+st.sidebar.header("2. Steering Mode")
+steering_mode = st.sidebar.radio("Select Mode", ["Manual Steering", "Beam Hopping"])
+
+azimuth = 0.0
+elevation = 0.0
+hopping_config = None
+
+if steering_mode == "Manual Steering":
+    st.sidebar.subheader("Manual Controls")
+    azimuth = st.sidebar.slider("Azimuth Angle (deg)", -90.0, 90.0, 0.0, 1.0)
+    elevation = st.sidebar.slider("Elevation (Deflection from Nadir)", 0.0, 90.0, 0.0, 1.0)
+else:
+    st.sidebar.subheader("Hopping Configuration")
+    num_beams = st.sidebar.number_input("Number of Beams", min_value=1, max_value=8, value=2)
+    pattern_length = st.sidebar.number_input("Pattern Length", min_value=1, max_value=32, value=8)
+    time_granularity = st.sidebar.number_input("Time Granularity (s/hop)", min_value=0.1, max_value=10.0, value=1.0)
+    
+    st.sidebar.markdown("**Hopping Patterns (Cell IDs 0-47)**")
+    patterns = []
+    # Provide sensible defaults
+    defaults = [
+        "1, 2, 3, 4, 2, 1, 3, 4",
+        "5, 7, 6, 8, 7, 7, 7, 7",
+        "10, 11, 12, 13, 14, 15, 16, 17",
+        "40, 41, 42, 43, 42, 41, 40, 41"
+    ]
+    for b in range(int(num_beams)):
+        def_val = defaults[b % len(defaults)]
+        seq_str = st.sidebar.text_input(f"Beam {b+1} Sequence", value=def_val)
+        # Parse the string into a list of ints safely, modulo 48 for safety
+        try:
+            seq = [int(x.strip()) % 48 for x in seq_str.split(',') if x.strip().isdigit()]
+            if len(seq) == 0: seq = [0]
+        except Exception:
+            seq = [0]
+        patterns.append(seq)
+        
+    hopping_config = {
+        "num_beams": int(num_beams),
+        "pattern_length": int(pattern_length),
+        "time_granularity": float(time_granularity),
+        "patterns": patterns
+    }
 
 st.sidebar.header("3. Satellite Trajectory")
 time_t = st.sidebar.slider("Mission Time (s)", -120.0, 120.0, 0.0, 1.0)
@@ -71,5 +111,5 @@ with tab_beam:
 
 with tab_topo:
     st.subheader("Satellite Spot Beam Coverage Architecture")
-    fig_topo = create_coverage_figure(time_t=time_t, steer_az=azimuth, steer_el=elevation, freq_ghz=freq_ghz)
+    fig_topo = create_coverage_figure(time_t=time_t, steer_az=azimuth, steer_el=elevation, freq_ghz=freq_ghz, hopping_config=hopping_config)
     st.plotly_chart(fig_topo, use_container_width=True)
