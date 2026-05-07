@@ -26,7 +26,7 @@ class LEOSatellite:
         
         distance = np.sqrt(x**2 + y**2)
         
-        # Elevation: Angle from the horizon up to the satellite
+        # Elevation:-Angle from the horizon up to the satellite
         elevation = np.degrees(np.arctan2(y, np.abs(x)))
         
         # Azimuth: 0 if departing along the axis, 180 if approaching
