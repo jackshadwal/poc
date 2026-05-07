@@ -8,7 +8,7 @@ from coverage_vis import create_coverage_figure
 st.set_page_config(page_title="NTN Beamforming Dashboard", layout="wide")
 
 st.title("🛰️ NTN Beamforming Interactive Dashboard")
-st.markdown("This system computes mathematical beamforming responses and simulates directivity patterns for NTN environments, satisfying strict REQ 1 functional constraints.")
+st.markdown("This system computes mathematical beamforming responses and simulates directivity patterns for NTN environments.")
 
 tab_beam, tab_topo = st.tabs(["📶 Antenna Beamforming", "🌐 Network Topology"])
 
@@ -42,7 +42,11 @@ else:
         "1, 2, 3, 4, 2, 1, 3, 4",
         "5, 7, 6, 8, 7, 7, 7, 7",
         "10, 11, 12, 13, 14, 15, 16, 17",
-        "40, 41, 42, 43, 42, 41, 40, 41"
+        "40, 41, 42, 43, 42, 41, 40, 41",
+        "20, 21, 22, 23, 24, 25, 26, 27",
+        "30, 31, 32, 33, 34, 35, 36, 37",
+        "18, 19, 20, 21, 20, 19, 18, 19",
+        "38, 39, 44, 45, 46, 47, 46, 45"
     ]
     for b in range(int(num_beams)):
         def_val = defaults[b % len(defaults)]
@@ -111,5 +115,24 @@ with tab_beam:
 
 with tab_topo:
     st.subheader("Satellite Spot Beam Coverage Architecture")
-    fig_topo = create_coverage_figure(time_t=time_t, steer_az=azimuth, steer_el=elevation, freq_ghz=freq_ghz, hopping_config=hopping_config)
+    fig_topo, metrics_data = create_coverage_figure(time_t=time_t, steer_az=azimuth, steer_el=elevation, freq_ghz=freq_ghz, hopping_config=hopping_config)
+    
+    if metrics_data:
+        active_cells = [str(m['cell_id']) for m in metrics_data]
+        if steering_mode == "Beam Hopping" and hopping_config is not None:
+            hop_step = int(abs(time_t) // hopping_config['time_granularity']) % hopping_config['pattern_length']
+            st.success(f"**📡 Live Network Status** &nbsp;&nbsp;|&nbsp;&nbsp; **Mode:** Beam Hopping &nbsp;&nbsp;|&nbsp;&nbsp; **Current Hop Step:** {hop_step + 1} of {hopping_config['pattern_length']} &nbsp;&nbsp;|&nbsp;&nbsp; **Active Cells:** [{', '.join(active_cells)}]")
+        else:
+            st.success(f"**📡 Live Network Status** &nbsp;&nbsp;|&nbsp;&nbsp; **Mode:** Manual Steering &nbsp;&nbsp;|&nbsp;&nbsp; **Active Cell:** {active_cells[0] if active_cells else 'None'}")
+            
+        st.markdown("### 📡 Live Link Metrics")
+        cols = st.columns(len(metrics_data))
+        for idx, m in enumerate(metrics_data):
+            with cols[idx]:
+                st.markdown(f"**Beam #{m['beam_num']} (Cell {m['cell_id']})**")
+                sub_cols = st.columns(3)
+                sub_cols[0].metric("Distance", f"{m['distance_km']:.1f} km")
+                sub_cols[1].metric("Path Loss", f"{m['fspl_db']:.2f} dB")
+                sub_cols[2].metric("Doppler Shift", f"{m['doppler_khz']:.2f} kHz")
+                
     st.plotly_chart(fig_topo, use_container_width=True)

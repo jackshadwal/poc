@@ -99,6 +99,7 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
     
     # Draw Hexagons
     active_indices = {b['idx']: b for b in active_beams}
+    metrics_data = []
     
     for i, (cx, cy) in enumerate(centers):
         x, y = get_hexagon_vertices(cx, cy, radius)
@@ -121,6 +122,13 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
             line_color = "red" if hopping_config is None else "white"
             width = 3
             dist_real_m, fspl, doppler_shift = get_cell_metrics(i)
+            metrics_data.append({
+                'beam_num': beam.get('beam_num', 1),
+                'cell_id': i,
+                'distance_km': dist_real_m / 1000,
+                'fspl_db': fspl,
+                'doppler_khz': doppler_shift / 1e3
+            })
             hop_text = ""
             if hopping_config is not None:
                 p_len = hopping_config.get('pattern_length', 8)
@@ -253,4 +261,4 @@ def create_coverage_figure(time_t=0.0, steer_az=0.0, steer_el=0.0, freq_ghz=28.0
         legend=dict(x=0.05, y=0.9, bgcolor="rgba(255, 255, 255, 0.5)")
     )
     
-    return fig
+    return fig, metrics_data
