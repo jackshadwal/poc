@@ -151,3 +151,21 @@ def test_target_columns_preserved():
     assert int(row['target_cell_id']) == 25
 
 
+
+def test_velocity_backfilling_first_timestep():
+    """Verify that the first timestep's velocity is derived from the second when available."""
+    csv_data = StringIO(
+        "time_sec,sat_id,x_km,y_km,altitude_km\n"
+        "0,1,0,0,600\n"
+        "10,1,75,0,600\n"
+    )
+    scn = Scenario.from_csv(csv_data)
+    state_t0 = scn.get_state_at(0.0).iloc[0]
+    # vx should be 75/10 = 7.5, even at t=0
+    assert np.isclose(state_t0['vx_kms'], 7.5)
+
+    # If only one timestep, velocity should be 0.0
+    single = StringIO("time_sec,sat_id,x_km,y_km,altitude_km\n0,1,0,0,600\n")
+    scn_single = Scenario.from_csv(single)
+    state_single = scn_single.get_state_at(0.0).iloc[0]
+    assert state_single['vx_kms'] == 0.0

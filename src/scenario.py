@@ -129,6 +129,10 @@ class Scenario:
             dt = group['time_sec'].diff()
             vx = group['x_km'].diff() / dt
             vy = group['y_km'].diff() / dt
+            # Compute velocity (v = dx/dt). 
+            # NOTE: For the first timestep in a sequence (index 0), diff() is NaN.
+            # We back-fill the first velocity from the second timestep's diff if 
+            # available (constant velocity assumption for start), otherwise default to 0.0.
             if len(group) > 1:
                 vx.iloc[0] = vx.iloc[1]
                 vy.iloc[0] = vy.iloc[1]
@@ -230,7 +234,7 @@ def generate_sample_scenario_with_hopping(num_satellites: int = 3,
                                             t_end: float = 120.0,
                                             dt: float = 2.0,
                                             hop_period_sec: float = 8.0,
-                                            num_cells: int = 48) -> pd.DataFrame:
+                                            num_cells: int = 120) -> pd.DataFrame:
     """
     Same satellite trajectories as `generate_sample_scenario`, but each sat
     has multiple beams that hop through configured target_cell_id patterns

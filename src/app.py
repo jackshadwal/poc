@@ -175,7 +175,7 @@ with tab_anim:
 | `altitude_km` | float | ✅ | Satellite altitude above ground in km |
 | `name` | str | ◻︎ | Display name shown on satellite marker |
 | `beam_idx` | int | ◻︎ | Beam index (0..N-1) within the satellite. Multiple rows with same `(time_sec, sat_id)` and distinct `beam_idx` encode multi-beam. **Hopping** is encoded by changing `target_cell_id` across time for the same `beam_idx`. |
-| `target_cell_id` | int | ◻︎ | Explicit hex cell to point this beam at (0–47) |
+| `target_cell_id` | int | ◻︎ | Explicit hex cell to point this beam at (0–119) |
 | `target_x_km` | float | ◻︎ | Explicit ground X target (used if `target_cell_id` absent) |
 | `target_y_km` | float | ◻︎ | Explicit ground Y target |
 
