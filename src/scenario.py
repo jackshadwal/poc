@@ -21,7 +21,7 @@ Optional columns:
                            Multiple rows with the same (time_sec, sat_id) but
                            different beam_idx encode multi-beam scenarios.
                            Changing beam_idx targets over time → beam hopping.
-    target_cell_id : int   explicit hex cell to point this beam at (0–47).
+    target_cell_id : int   explicit hex cell to point this beam at (0–119).
     target_x_km    : float explicit ground-target X (km). Used only if
                            target_cell_id is absent.
     target_y_km    : float explicit ground-target Y (km).
