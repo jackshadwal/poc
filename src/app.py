@@ -1,16 +1,26 @@
+import os
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import pandas as pd
 from antenna import UniformRectangularArray
-from coverage_vis import create_coverage_figure
+from coverage_vis import (
+    create_coverage_figure,
+    create_animated_coverage_figure,
+    compute_frame_metrics,
+)
+from scenario import Scenario, REQUIRED_COLS, OPTIONAL_TARGETING_COLS
 # Configure Streamlit Page
 st.set_page_config(page_title="NTN Beamforming Dashboard", layout="wide")
 
 st.title("🛰️ NTN Beamforming Interactive Dashboard")
 st.markdown("This system computes mathematical beamforming responses and simulates directivity patterns for NTN environments.")
 
-tab_beam, tab_topo = st.tabs(["📶 Antenna Beamforming", "🌐 Network Topology"])
+tab_beam, tab_topo, tab_anim = st.tabs([
+    "📶 Antenna Beamforming",
+    "🌐 Network Topology",
+    "🎬 Multi-Sat Animation",
+])
 
 # Sidebar Controls for Full Configuration
 st.sidebar.header("1. Antenna Configuration")
@@ -35,25 +45,26 @@ else:
     pattern_length = st.sidebar.number_input("Pattern Length", min_value=1, max_value=32, value=8)
     time_granularity = st.sidebar.number_input("Time Granularity (s/hop)", min_value=0.1, max_value=10.0, value=1.0)
     
-    st.sidebar.markdown("**Hopping Patterns (Cell IDs 0-47)**")
+    st.sidebar.markdown("**Hopping Patterns (Cell IDs 0-119)**")
     patterns = []
-    # Provide sensible defaults
+    # Defaults walk adjacent cells in the 10x12 grid so the hop is visually
+    # obvious — each sequence stays inside one local region and ping-pongs.
     defaults = [
-        "1, 2, 3, 4, 2, 1, 3, 4",
-        "5, 7, 6, 8, 7, 7, 7, 7",
-        "10, 11, 12, 13, 14, 15, 16, 17",
-        "40, 41, 42, 43, 42, 41, 40, 41",
-        "20, 21, 22, 23, 24, 25, 26, 27",
-        "30, 31, 32, 33, 34, 35, 36, 37",
-        "18, 19, 20, 21, 20, 19, 18, 19",
-        "38, 39, 44, 45, 46, 47, 46, 45"
+        "48, 49, 50, 49",      # row 4, cols 0-2 ping-pong
+        "60, 61, 62, 61",      # row 5, cols 0-2
+        "55, 56, 57, 56",      # row 4, cols 7-9
+        "67, 68, 69, 68",      # row 5, cols 7-9
+        "24, 25, 26, 38, 37, 36",  # 2x3 snake
+        "29, 30, 31, 43, 42, 41",
+        "84, 85, 86, 98, 97, 96",
+        "89, 90, 91, 103, 102, 101",
     ]
     for b in range(int(num_beams)):
         def_val = defaults[b % len(defaults)]
         seq_str = st.sidebar.text_input(f"Beam {b+1} Sequence", value=def_val)
         # Parse the string into a list of ints safely, modulo 48 for safety
         try:
-            seq = [int(x.strip()) % 48 for x in seq_str.split(',') if x.strip().isdigit()]
+            seq = [int(x.strip()) % 120 for x in seq_str.split(',') if x.strip().isdigit()]
             if len(seq) == 0: seq = [0]
         except Exception:
             seq = [0]
@@ -134,5 +145,165 @@ with tab_topo:
                 sub_cols[0].metric("Distance", f"{m['distance_km']:.1f} km")
                 sub_cols[1].metric("Path Loss", f"{m['fspl_db']:.2f} dB")
                 sub_cols[2].metric("Doppler Shift", f"{m['doppler_khz']:.2f} kHz")
-                
+
     st.plotly_chart(fig_topo, use_container_width=True)
+
+# ======================================================================
+# Tab 3 — Multi-Satellite Animated Scenario (CSV-driven)
+# ======================================================================
+with tab_anim:
+    st.subheader("Multi-Satellite Scenario Player")
+    st.markdown(
+        "Upload a CSV describing **N satellites over time** and watch the "
+        "simulation play as a continuous animation — no slider scrubbing needed. "
+        "Each timestep becomes one frame; play / pause / scrub from the controls "
+        "below the 3D scene."
+    )
+
+    with st.expander("📄 CSV format reference"):
+        st.markdown(
+            f"""
+**Required columns:** `{', '.join(REQUIRED_COLS)}`
+**Optional columns:** `name`, `{', '.join(OPTIONAL_TARGETING_COLS)}`
+
+| Column | Type | Required | Meaning |
+| --- | --- | :-: | --- |
+| `time_sec` | float | ✅ | Simulation time in seconds (can be negative) |
+| `sat_id` | int | ✅ | Unique satellite identifier |
+| `x_km` | float | ✅ | Ground-track X position in km (East+) |
+| `y_km` | float | ✅ | Ground-track Y position in km (North+) |
+| `altitude_km` | float | ✅ | Satellite altitude above ground in km |
+| `name` | str | ◻︎ | Display name shown on satellite marker |
+| `beam_idx` | int | ◻︎ | Beam index (0..N-1) within the satellite. Multiple rows with same `(time_sec, sat_id)` and distinct `beam_idx` encode multi-beam. **Hopping** is encoded by changing `target_cell_id` across time for the same `beam_idx`. |
+| `target_cell_id` | int | ◻︎ | Explicit hex cell to point this beam at (0–47) |
+| `target_x_km` | float | ◻︎ | Explicit ground X target (used if `target_cell_id` absent) |
+| `target_y_km` | float | ◻︎ | Explicit ground Y target |
+
+**Target resolution priority** per beam row:
+`target_cell_id` → `(target_x_km, target_y_km)` → nadir (sub-sat point).
+
+Velocity, slant range and radial velocity are derived automatically from
+consecutive timesteps (per-beam Doppler is recomputed against each beam's
+actual target). All scene parameters — number of satellites, number of
+beams per satellite, altitudes, ground tracks, hopping patterns — are
+inferred from the data; the figure adapts to whatever you upload.
+            """
+        )
+
+    col_a, col_b = st.columns([3, 1.2])
+    with col_a:
+        uploaded = st.file_uploader(
+            "Upload scenario CSV",
+            type=['csv'],
+            help="One row per (timestamp, satellite, beam). See the format expander above.",
+        )
+    with col_b:
+        st.markdown(" "); st.markdown(" ")
+        use_sample = st.button(
+            "📦 Load bundled sample",
+            use_container_width=True,
+            help="Pre-generated demo with satellites carrying different numbers of beams.",
+        )
+
+    # Persist the user's choice across Streamlit reruns
+    if use_sample:
+        st.session_state['scenario_source'] = 'sample'
+    if uploaded is not None:
+        st.session_state['scenario_source'] = 'upload'
+
+    scenario = None
+    err = None
+    src = st.session_state.get('scenario_source')
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sample_path = os.path.join(repo_root, 'data', 'sample_scenario.csv')
+
+    if src == 'upload' and uploaded is not None:
+        try:
+            scenario = Scenario.from_csv(uploaded)
+        except Exception as e:
+            err = f"Failed to load uploaded CSV: {e}"
+    elif src == 'sample':
+        try:
+            scenario = Scenario.from_csv(sample_path)
+        except Exception as e:
+            err = f"Could not load bundled sample at {sample_path}: {e}"
+
+    if err:
+        st.error(err)
+
+    if scenario is None:
+        st.info(
+            "👉 Upload a CSV above, or click **Load bundled sample** to play a "
+            "pre-generated scenario. Every parameter — satellite count, "
+            "beams per satellite, altitudes, ground tracks, hopping patterns — "
+            "is read directly from the CSV; the visualization adapts automatically."
+        )
+    else:
+        t_min, t_max = scenario.time_range()
+        n_sats = scenario.num_satellites()
+        n_frames = len(scenario.get_timestamps())
+
+        total_beams = scenario.total_beam_slots()
+        info_cols = st.columns(5)
+        info_cols[0].metric("Satellites", n_sats)
+        info_cols[1].metric("Total beam slots", total_beams)
+        info_cols[2].metric("Frames", n_frames)
+        info_cols[3].metric("Time span", f"{t_min:.0f} → {t_max:.0f} s")
+        info_cols[4].metric("Carrier freq", f"{freq_ghz:.1f} GHz")
+
+        # Render the animated 3D figure
+        anim_fig = create_animated_coverage_figure(scenario, freq_ghz=freq_ghz)
+        st.plotly_chart(anim_fig, use_container_width=True)
+
+        # Per-satellite link metrics table + plots
+        with st.expander("📊 Per-satellite link metrics (across all timesteps)"):
+            metrics_df = compute_frame_metrics(scenario, freq_ghz=freq_ghz)
+
+            st.markdown("**Summary by satellite**")
+            summary = metrics_df.groupby(['sat_id', 'name']).agg(
+                min_dist_km=('distance_km', 'min'),
+                max_dist_km=('distance_km', 'max'),
+                min_fspl_db=('fspl_db', 'min'),
+                max_fspl_db=('fspl_db', 'max'),
+                min_doppler_khz=('doppler_khz', 'min'),
+                max_doppler_khz=('doppler_khz', 'max'),
+            ).reset_index()
+            st.dataframe(summary, use_container_width=True)
+
+            st.markdown("**Doppler shift over time (per satellite)**")
+            doppler_fig = go.Figure()
+            for sat_id, sub in metrics_df.groupby('sat_id'):
+                doppler_fig.add_trace(go.Scatter(
+                    x=sub['time_sec'], y=sub['doppler_khz'],
+                    mode='lines', name=str(sub['name'].iloc[0]),
+                ))
+            doppler_fig.update_layout(
+                xaxis_title="Time (s)",
+                yaxis_title="Doppler shift (kHz)",
+                height=350, margin=dict(l=10, r=10, t=10, b=10),
+            )
+            st.plotly_chart(doppler_fig, use_container_width=True)
+
+            st.markdown("**Path loss over time (per satellite)**")
+            fspl_fig = go.Figure()
+            for sat_id, sub in metrics_df.groupby('sat_id'):
+                fspl_fig.add_trace(go.Scatter(
+                    x=sub['time_sec'], y=sub['fspl_db'],
+                    mode='lines', name=str(sub['name'].iloc[0]),
+                ))
+            fspl_fig.update_layout(
+                xaxis_title="Time (s)",
+                yaxis_title="Free Space Path Loss (dB)",
+                height=350, margin=dict(l=10, r=10, t=10, b=10),
+            )
+            st.plotly_chart(fspl_fig, use_container_width=True)
+
+            # Download the computed metrics as CSV
+            csv_out = metrics_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "⬇️ Download all-frames link metrics (CSV)",
+                data=csv_out,
+                file_name="scenario_link_metrics.csv",
+                mime="text/csv",
+            )
